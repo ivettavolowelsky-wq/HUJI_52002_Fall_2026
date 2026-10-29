@@ -136,10 +136,12 @@ and explain: what does `tee` do, and where does the output of each command go? H
 ```
 
 #TODO [what does `tee` do, and where does the output of each command go? <1pts>]
-
+'tee' takes the data, and splits it in two. It takes one copy and saves it into a file - tx_oh.csv.
+It takes the original data flow and passes it further along the chain to the next command (in our case, to the 'wc -l' command, which counts the lines).
 #TODO [how would you use `tee` to also keep a copy of the unfiltered header line? <1pts>]
-
+I would first run head -n 1 covid.csv | tee tx_oh.csv to extract the unfiltered header, save it to the file, and pass it to the screen.
 #TODO [what does `tee -a` do and when would you use it? <1pts>]
+The -a flag stands for 'append'. tee -a appends the output to the end of the file instead of overwriting it. I would use it if I want to add new data to an existing file without erasing its previous contents for example, to append the filtered rows to tx_oh.csv after the header was already saved there.
 
 # Part 3: Hundreds of files
 
@@ -161,48 +163,57 @@ awk -F, 'NR>1 {print > ("days/" $1 ".csv")}' covid.csv
 Inside `awk`, `print > name` writes the current line to the file called `name` (creating it the first time). Here the name is built from the first column, the date. (Mac users: if this stops with an error about too many open files, use `awk -F, 'NR>1 { if ($1 != d) { close(f); d = $1; f = "days/" d ".csv" } print > f }' covid.csv` instead, which closes each file before opening the next one.)
 
 #TODO [in your own words, what did the `awk` command do? What does `NR>1` do, and what would go wrong without it? <2pts>]
+awk reads the file line after line. F- means thats the columns are separated by ',' . the commands in the parentheses say - take the current line, save it in the days file that its name is the first column,  and adds csv.
+NR is Number of Records. the condition tells it to skip the first line (the header), without it awk would create a fie named date.csv containing only the header line.
+
 
 ```bash
-#TODO [one command that counts the files in `days` <1pts>]
-#TODO [one command that counts only the files for April 2020 <1pts>]
+#TODO [one command that counts the files in `days` <1pts>] ls days | wc -l
+#TODO [one command that counts only the files for April 2020 <1pts>] ls days/2020-04*.csv | wc -l
 ```
 
-#TODO [the two numbers <1pts>]
+#TODO [the two numbers <1pts>] 346, 30 
 
 Check that splitting lost nothing: write one command that prints the total number of lines in all the files in `days` together, and compare it with the number of data rows (without the header) in `covid.csv` that you found in Lab 1.
 
 ```bash
-#TODO [command <1pts>]
+#TODO [command <1pts>] cat days/*.csv | wc -l
 ```
 
-#TODO [the two numbers, and do they agree? <1pts>]
+#TODO [the two numbers, and do they agree? <1pts>] yes, they agree
 
 Find the biggest file in two ways: by size in bytes, and by number of rows.
 
 ```bash
-#TODO [command: the biggest file in bytes (use `ls`) <1pts>]
-#TODO [command: the file with the most rows (use `wc -l`, `sort` and `tail`) <1pts>]
+#TODO [command: the biggest file in bytes (use `ls`) <1pts>] 2020-12-31.csv.
+#TODO [command: the file with the most rows (use `wc -l`, `sort` and `tail`) <1pts>]  3248 days/2020-10-18.csv
 ```
 
-#TODO [the two answers are different days. Look at a few lines of each file: why is the biggest file not the one with the most rows? <2pts>]
+#TODO [the two answers are different days. Look at a few lines of each file: why is the biggest file not the one with the most rows? <2pts>] 
+The file with the most bytes is 2020-12-31.csv, while the file with the most rows is 2020-10-18. This is because file size in bytes depends on the total number of characters. By December 31, the cumulative numbers of cases and deaths were much larger, meaning they required more digits (characters) to write. Therefore, each row became longer and took up more bytes, making the overall file larger even if it had slightly fewer rows.
 
 On which day does Wyoming first appear in the data? Use `grep -l` (read `man grep`) together with `head`, in one line.
 
 ```bash
-#TODO [command <1pts>]
+#TODO [command <1pts>] grep -l "Wyoming" days/*.csv | head -n 1
 ```
 
-#TODO [the day <1pts>]
-#TODO [`grep` looked at the files in the order of their names. Why is that order the same as the order of the dates here? Would it still be true for files named like `3-11-2020.csv`? <2pts>]
+#TODO [the day <1pts>] days/2020-03-11.csv
+#TODO [`grep` looked at the files in the order of their names. Why is that order the same as the order of the dates here? Would it still be true for files named like `3-11-2020.csv`? <2pts>] 
+The filenames use the YYYY-MM-DD format, which places the most significant time unit first (year, then month, then day) and uses leading zeros for single-digit months and days. Because of this, standard alphabetical sorting matches the chronological order. It would not be true for files named like 3-11-2020.csv, because alphabetical sorting compares character by character from left to right.
 
 Every file in `days` is missing the header line. Write a `for` loop that puts the header line of `covid.csv` at the top of every file. Hint: `{ cmd1; cmd2; } > out` sends the output of both commands into `out`. Then check your work with `grep -l` and `wc -l`.
 
 ```bash
-#TODO [your loop <2pts>]
-#TODO [the command that checks that all files now start with the header <1pts>]
+#TODO [your loop <2pts>] for f in days/*.csv; do { head -n 1 covid.csv; cat "$f"; } > tmp && mv tmp "$f"; done
+grep -l "^date,county,state" days/*.csv | wc -l
+#TODO [the command that checks that all files now start with the header <1pts>] 
+for f in days/*.csv; do { head -n 1 covid.csv; cat "$f"; } > tmp && mv tmp "$f"; done
+grep -l "^date,county,state" days/*.csv | wc -l
 ```
 
 #TODO [why can't you write `cat header.csv "$f" > "$f"` in the loop? (Remember `p2.txt` from Lab 1.) <1pts>]
+Because the `>` operator immediately empties (erases) the file "$f" before the `cat` command even starts reading it, so all the data inside "$f" would be lost.
 
 Rename every file from `2020-MM-DD.csv` to `MM-DD.csv`. A classic one-liner trick is to let `sed` *write* the commands and only then hand them to `bash`. First look at the commands without running them:
 
@@ -213,13 +224,17 @@ ls | sed 's/^2020-\(.*\)$/mv 2020-\1 \1/' | head -n 3
 
 ```
 [output <1pts>]
+mv 2020-01-21.csv 01-21.csv
+mv 2020-01-22.csv 01-22.csv
+mv 2020-01-23.csv 01-23.csv
 ```
 
 When the commands look right, run them all by replacing `| head -n 3` with `| bash`, then `cd ..`.
 
 #TODO [what do `\(...\)` and `\1` do in the `sed` pattern? (See `man sed`.) <1pts>]
+... captures and saves the matched part of the text (everything after 2020, which is MM.DD), and ֿֿ\1 pastes that saved text back into the replacement string.
 #TODO [why is it a good habit to look at the generated commands before piping them into `bash`? <1pts>]
-
+Because a small mistake in the `sed` pattern could generate wrong 'mv' commands that accidentally overwrite or ruin hundreds of files at once. Checking the output first ensures the commands are safe before executing them.
 File names with spaces break many one-liners. Try:
 
 ```bash
@@ -231,9 +246,13 @@ rm "days/my notes.txt"
 
 ```
 [output of the two loops <1pts>]
+[days/my]
+[notes.txt]
+[days/my notes.txt]
 ```
 
 #TODO [why does the first loop see two files? <2pts>]
+Because the shell splits the unquoted output of $(ls ...) by spaces (word splitting). Since "my notes.txt" has a space in the middle, the loop treats days/my and notes.txt as two separate items.
 
 Finally, compress the files, first one at a time and then in parallel. `xargs -n 10` hands the file names to `gzip` ten at a time, and `-P 4` runs up to four `gzip`s at the same time (read `man xargs`):
 
@@ -249,11 +268,19 @@ ls -lh days.tar.gz
 ```
 
 ```
-[output <1pts>]
+[output <1pts>] 
+zsh: command not found: nproc
+( ls g1/*.csv | xargs gzip; )  1.45s user 0.37s system 94% cpu 1.925 total
+( ls g4/*.csv | xargs -n 10 -P 4 gzip; )  1.72s user 0.62s system 348% cpu 0.670 total
+ 35M    days
+9.7M    g1
+-rw-r--r--@ 1 elivolowelsky  staff   9.0M Oct 29 19:43 days.tar.gz
 ```
 
 #TODO [how many times faster was the parallel version? Why is it not exactly 4 times faster? <2pts>]
+The parallel version was about 2.87 times faster (1.925s / 0.670s ≈ 2.87). It is not exactly 4 times faster because of the overhead of starting and managing multiple processes, and because all 4 processes compete for disk I/O (reading and writing files to the disk at the same time). also: on macOS, nproc is not available.
 #TODO [`days.tar.gz` is smaller than the folder of separately gzipped files. Why? (Hint: what can `gzip` take advantage of when all the files are compressed as one stream?) <2pts>]
+When compressing all files together as one continuous stream (days.tar.gz), 'gzip' can exploit redundancies (repeated text like state and county names, headers, and date prefixes) across different files, and it only writes one gzip file header/footer instead of 346 separate ones.
 
 # Part 4: When there are too many files
 
@@ -273,15 +300,21 @@ getconf ARG_MAX
 
 ```
 [output <1pts>]
+ 200000
+zsh: argument list too long: ls
+       0
+zsh: argument list too long: rm
+1048576
 ```
 
 #TODO [why do `ls *.txt` and `rm *.txt` fail, when `ls | wc -l` works fine? Who expands the `*`, and what is `ARG_MAX`? <2pts>]
+The shell itself expands the '*' before running the command, turning *.txt into a massive list of 200,000 filenames. This exceeds ARG_MAX (the maximum total length in bytes of arguments that can be passed to a single command), causing an "Argument list too long" error. Also, ls | wc -l works fine because no arguments are passed to 'ls', it reads the directory directly and sends the output through a pipe, which has no size limit.
 #TODO [`xargs touch` created all 200,000 files without this error. How? (See `man xargs`.) <1pts>]
-
+xargs reads the filenames from standard input and splits them into smaller batches that fit within the system's ARG_MAX limit, running touch multiple times instead of all at once.
 Now delete them correctly, and remove the folder:
 
 ```bash
-#TODO [one command that deletes all the files in `lots` using `find` and `xargs` <1pts>]
+#TODO [one command that deletes all the files in `lots` using `find` and `xargs` <1pts>] find . -type f | xargs rm
 cd .. && rmdir lots
 ```
 
@@ -296,9 +329,14 @@ df -i ~
 
 ```
 [output <1pts>]
+Filesystem      Size    Used   Avail Capacity iused ifree %iused  Mounted on
+/dev/disk1s2   932Gi    42Gi   872Gi     5%    559k  9.1G    0%   /System/Volumes/Data
+Filesystem   512-blocks      Used  Available Capacity iused      ifree %iused  Mounted on
+/dev/disk1s2 1953595632  88194856 1827916064     5%  558779 9139580320    0%   /System/Volumes/Data
 ```
 
 #TODO [how many more files could you create on your home disk before you run out of inodes? <1pts>]
+According to the ifree column in df -i ~, I can create billions more files ,about 9.1 billion, because macOS dynamically allocates inodes as needed.
 
 Your real disk has far too many inodes to use up, so build a tiny disk inside a file and fill that one instead. This needs `sudo`. (Mac users: macOS's file system creates inodes as needed, so this cannot be reproduced on a Mac. Do it on a Linux machine, e.g. the remote machine from Lecture 2.)
 
@@ -322,13 +360,40 @@ mkdir newdir
 
 ```
 [output <1pts>]
+touch: cannot touch '1999.txt': No space left on device
+touch: cannot touch '2000.txt': No space left on device
+998
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/loop0       16M   44K   15M   1% /tmp/tiny
+Filesystem     Inodes IUsed IFree IUse% Mounted on
+/dev/loop0       1008  1008     0  100% /tmp/tiny
+mkdir: cannot create directory 'newdir': No space left on device
+root@b9b02aa91c9f:/tmp/tiny# ls | wc -l
+df -h .
+df -i .
+echo "hello" >> 1.txt
+mkdir newdir
+998
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/loop0       16M   48K   15M   1% /tmp/tiny
+Filesystem     Inodes IUsed IFree IUse% Mounted on
+/dev/loop0       1008  1008     0  100% /tmp/tiny
+mkdir: cannot create directory 'newdir': No space left on device
+root@b9b02aa91c9f:/tmp/tiny# 
 ```
+(The ending of the output.)
 
 #TODO [how many files did you manage to create, and what was the error? <1pts>]
-#TODO [what do `df -h .` and `df -i .` say about space and inodes at that point? <1pts>]
-#TODO [why did appending to `1.txt` work, but `mkdir newdir` fail? <2pts>]
-#TODO [a server's disk shows "No space left on device" but `df -h` says it is only 30% full. What would you check, and what kind of program might have caused it? <2pts>]
+998, and the error was No space left on device.
 
+#TODO [what do `df -h .` and `df -i .` say about space and inodes at that point? <1pts>]
+df -h shows the disc is almost empty, only 1% is used and more than 15MB available.
+df -i shows all the inodes are used -100 % and 0% available, it means that the inodes were finished before the space was finished, thats why there is no option to create new files.
+#TODO [why did appending to `1.txt` work, but `mkdir newdir` fail? <2pts>]
+adding text to 1.txt worked because the file already exists and has its own inode.
+The operation only needs a little disk space for the new content, and there is plenty of free space. mkdir newdir failed because creating a new directory requires a new inode, and all the inodes are in use. So you can add content to existing files, but you cannot create new files or directories, even though the disk is almost empty.
+#TODO [a server's disk shows "No space left on device" but `df -h` says it is only 30% full. What would you check, and what kind of program might have caused it? <2pts>]
+I would run df -i to check if the inodes are fully used (IUse close to 100%). If so, I would check which filed contains the most files. The problem is usually caused from a program that creates a big number of small files and doesnt delete them.
 Clean up:
 
 ```bash
