@@ -1,0 +1,320 @@
+---
+title: "Lab 4: Remote machines and background jobs"
+subtitle: "Big Data Algorithms"
+author: "YOUR NAME HERE"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    number-sections: false
+    code-copy: true
+    embed-resources: true
+execute:
+  eval: false
+---
+
+This lab has exercises that reinforce the section "Working on remote machines" of Lecture 4 (`lectures/lec04_remote_machines_postgres.qmd`) and the sections "Finding and stopping a process" and "Background job administration" of Lecture 2 (`lectures/lec02_linux_advanced.qmd`). Parts 1 and 2 get you onto Moriah, the HUJI cluster, and move files back and forth. In Parts 3 to 7 you run **everything on Moriah**. You will need a second terminal logged into Moriah in a few places.
+
+::: {.callout-warning}
+## Ground rules
+* Run every command yourself. Many answers depend on what you see (and your PID numbers will not be the same as anyone else's).
+* Leave the "#TODO text [question text] text" line and start a new line underneath and write your answers on that new line
+* This file stays on your laptop, and you commit and push it from there. Keep it open on your laptop while your terminal is on Moriah.
+* Moriah is **shared** and its login machine is used by everyone. Other people's programs will show up in your output, including your classmates' `sleep` commands from this very lab. Only ever touch your own processes. Run nothing heavy on the login machine: everything here just sleeps or prints a line per second.
+* Clean up after yourself. Every part ends by stopping the processes it started. Check with `pgrep -u $USER -a sleep` that none are left over.
+* **Never** put your private key (`~/.ssh/id_ed25519`) in this file or anywhere else.
+:::
+
+# Part 0: Setup
+
+I'm assuming your private github repository for this class (as set up in `setup/01_linux_git_github_setup.qmd`) is in the following location. If not, please edit the location below:
+
+```bash
+export my_52002_repo="$HOME/workspace/HUJI_52002_Fall_2026"
+```
+
+Create a directory for this assignment, download this file and move it into `$my_52002_repo/labs/04/`. As in the previous labs, commit / push after chunks of work; the timestamp of your final push is your submission date. Create a scratch folder for this lab and move into it (the `scratch` line you added to `.gitignore` in Lab 1 keeps it out of git). Then copy the covid data into it:
+
+```bash
+mkdir -p $my_52002_repo/labs/04/scratch
+cd $my_52002_repo/labs/04/scratch
+#TODO [command to copy covid.csv from last lab's scratch folder or the download command <1pts>]
+```
+
+# Part 1: Remote computing with `ssh`
+
+Log in to Moriah from your laptop, with your own login in place of the two `user` placeholders. Enter your OTP and your password.
+
+```bash
+ssh -J user@bava.cs.huji.ac.il user@moriah-gw.cs.huji.ac.il
+#If you setup your machine using the instructions found in `04_setup_fast_ssh.qmd`, you will use simply the following instead
+#and you will only need one OTP every four hours and no password (your keys are used in lieu).
+ssh moriah
+```
+
+Now once inside the moriah gateway computer, run the following:
+
+```bash
+hostname
+whoami
+cd ~
+pwd
+nproc
+free -h
+exit #go back to your laptop
+```
+
+Now run the same `hostname`, `pwd`, `nproc` and `free -h` on your laptop (a Mac has no `free`: use `sysctl -n hw.memsize`, which is in bytes).
+
+#TODO [How many cores and how much memory does Moriah's login machine have compared to your laptop? <1pts>]
+#TODO [Why is the `pwd` different on Moriah vs your laptop? <1pts>]
+#TODO [why can't you just `ssh` straight to `moriah-gw` from home? What is the name for a machine like `bava`? <1pts>]
+
+# Part 2: Moving files with `rsync`
+
+All of these commands are run **on your laptop**, in `labs/04/scratch`. First make a folder on the server, without logging in:
+
+```bash
+cd $my_52002_repo/labs/04/scratch
+#TODO [login to moriah and make the folder lab04 in your home directory <1pts>]
+```
+
+Send the data over and check that it arrived whole. `md5sum` prints a *checksum*, a short code computed from all of the bytes of a file (we will dicussing this more formally when we do hash functions), so two equal codes mean two equal files (on a Mac, use `md5 covid.csv` for the first line):
+
+```bash
+md5sum covid.csv
+time #TODO [the rsync command which copies covid.csv to the lab04 folder on Moriah <1pts>]
+#TODO [login to moriah and run "md5sum ~/lab04/covid.csv" <1pts>]
+```
+
+#TODO [how long did the `rsync` transfer take, and do the two checksums agree? <1pts>]
+
+Make a folder of many small files, one per day, the same way you did in Lab 2:
+
+```bash
+mkdir days
+awk -F, 'NR>1 {print > ("days/" $1 ".csv")}' covid.csv
+ls days | wc -l
+```
+
+Copy the entire folder with `rsync`, twice:
+
+```bash
+time rsync -a --stats days/ moriah:~/lab04/days_rsync/
+time rsync -a --stats days/ moriah:~/lab04/days_rsync/
+```
+
+#TODO [Why was the second `rsync` run so much faster? <2pts>]
+#TODO [the `--stats` output has a line "Total bytes sent". What was it in each of the two rsync runs? <1pts>]
+
+Clean up on both sides:
+
+```bash
+rm -r days 
+# TODO [login to moriah and cleanup covid.csv and the days/ folder <2pts>]
+```
+
+# Part 3: Looking at processes with `ps` and `pgrep`
+
+From here to the end of the lab, everything is done on Moriah (unless it says otherwise):
+
+```bash
+#TODO [login to moriah <0pts>]
+cd ~/lab04
+```
+
+`sleep 600` does nothing for 10 minutes, which makes it a perfect process to look at. The `&` at the end runs it in the **background**, so you get your prompt back. The shell stores the PID of the last background process in the variable `$!`:
+
+```bash
+sleep 600 &
+echo $!
+```
+
+#TODO [what did the line `[1] <number>` that appeared after the first command show, and how is `echo $!` related to it? <1pts>]
+
+```bash
+jobs
+```
+
+#TODO [Is the output of the above expected? Why/why not? <1pts>]
+
+Now let's find this job in the linux process list. `ps` can show just the columns you ask for, for just the processes you ask for. Read the `-o` and `-p` options in `man ps` and run:
+
+```bash
+ps -o pid,ppid,user,stat,command -p $!
+#TODO [the parent PID of your `sleep` is the PID of another process. Write the command that shows that process' command, and say what it is <1pts>]
+```
+
+```bash
+#TODO [keep following the parents upward, one `ps` at a time, until you find the program which let you into moriah. The user will be "root". <1pts>]
+```
+
+#TODO [How does this explain why your background job is at risk when the connection drops? <1pts>]
+
+```bash
+#TODO [How many different users (besides root) on Moriah have a `sleep` running right now? <2pts>]
+```
+
+#TODO [Print out a table of the users running sleep. <2pts>]
+
+```bash
+#TODO [kill your sleep job without losing your connection to moriah <1pts>]
+```
+
+# Part 4: A terminal that survives: `tmux`
+
+`tmux` keeps a whole **terminal** alive, so that you can go away and come back to see it as you left it. Start a session called `lab4` on Moriah (if you get `command not found`, look for it with `module spider tmux`, as in the lecture):
+
+```bash
+tmux new -s lab4
+```
+
+You are now inside tmux (note the green bar at the bottom). We now navigate to the shared folder where there's a program you should run that persists.
+
+```bash
+cd /sci/courses/2026/52002/shared/
+```
+
+Now run the shared program called `tmux_proof`. Run it with your name as follows.
+
+```bash
+./tmux_proof "<first name> <last name>" #fill in your first name and last name!
+```
+
+After 24hr it will print out a unique encrypted code. We will decode it to reveal your full name and the hostname of the computer (which should be moriah). So don't share codes as you won't get credit if your name doesn't appear.
+
+Detach: press Ctrl+B, release both keys, then press d. You are back in your normal terminal on Moriah. Then go back into the terminal and ensure it's still running.
+
+```bash
+tmux ls
+tmux attach -t lab4
+```
+Detach again: press Ctrl+B, release both keys, then press d.
+
+Now you can skip the next TODO and continue the rest of the assignment. You can exit moriah and come back in 24hr and it will still be running.
+
+
+```bash
+tmux ls
+tmux attach -t lab4
+#now copy the code
+```
+
+#TODO [write the encrypted code from tmux_proof after it completes <2pts>]
+
+After the code is pasted above, you should cleanup your `tmux` terminal:
+
+```bash
+tmux kill-session -t lab4
+tmux ls #ensures it's not there
+exit #leave moriah and return to your own computer
+```
+
+# Part 5: Basic SQL on postgres
+
+This part reinforces the section "PostgreSQL" of Lecture 4. Unlike Parts 3 and 4, you do it **on your laptop**, with your own postgres server, from the `scratch` folder that holds `covid.csv`. This is because postgres still is not set up for the class on moriah. By next week hopefully it will be done. 
+
+Write each SQL statement on its own line underneath its `#TODO` line, and below it paste the answer Postgres gave you (or, if it is long, the first few rows). Use only what we covered in the lecture.
+
+## Databases
+
+```bash
+cd $my_52002_repo/labs/04/scratch
+#TODO [create a new empty database called lab04 and open psql inside it <1pts>]
+```
+
+```sql
+#TODO [print which database, user and socket you are connected through <1pts>]
+#TODO [list all the databases on your server <1pts>]
+#TODO [connect to the database called postgres, then back to lab04 <1pts>]
+```
+
+## Loading the covid data
+
+```sql
+#TODO [turn on the timing of each statement, create the table covid with a correctly-typed column for each of the 6 columns of covid.csv, and load covid.csv into it. Show the table's columns and their types, and the list of tables in the database <3pts>]
+#TODO [count the rows of covid <1pts>]
+```
+
+Now make a common mistake on purpose: run your `\copy` line a second time.
+
+```sql
+#TODO [count the rows of covid again <1pts>]
+```
+
+#TODO [What happened, and why did postgres not stop you? <1pts>]
+
+```sql
+#TODO [delete the table (in a way that won't error if it is already gone)<1pts>]
+#TODO [create it again (just copy the code from the previous chunk)]
+#TODO [reload the CSV covid data into it (just copy the code from the previous chunk)]
+#TODO [Count the # of rows to check <1pts>]
+```
+
+## Row-level queries
+
+```sql
+#TODO [all rows, all columns]
+#TODO [all the columns of the first 5 days of Snohomish County, Washington (the first known US case), oldest first <1pts>]
+#TODO [every county of Rhode Island, each listed once, in alphabetical order <1pts>]
+#TODO [on 2020-11-30, the county, state and deaths of the counties ranked 11 to 15 by deaths, most deaths first <1pts>]
+```
+
+#TODO [Look at the deaths column of your answer above. What went wrong? Write the corrected query below, using a condition from the lecture <2pts>]
+
+```sql
+#TODO [corrected query <1pts>]
+#TODO [on 2020-12-31, the state, county and deaths of every county in Maine, New Hampshire and Vermont (write the states as a list, not with OR), sorted by state and, within each state, by deaths, most first <1pts>]
+#TODO [on 2020-12-31, the counties outside New York state with more than 300000 cases or more than 5000 deaths, most cases first (you should get 3) <1pts>]
+#TODO [the cases in Los Angeles County, California from July 1 to July 4 2020, both days included, with one comparison only <1pts>]
+#TODO [on 2020-12-31, the county and state of every county whose name ends in "ville" <1pts>]
+#TODO [on 2020-12-31, the California counties (California's fips codes are "06" followed by 3 characters) with fewer than 200 cases, using the fips column and not the state column <1pts>]
+#TODO [the number of different county names that contain "lake", first with LIKE and then with ILIKE <1pts>]
+```
+
+#TODO [Why do the two counts differ? <1pts>]
+
+```sql
+#TODO [every different county name that starts with "Mc" or "Mac" followed by a capital letter, in alphabetical order, using a regular expression. How many are there? <2pts>]
+```
+
+## Aggregate queries
+
+```sql
+#TODO [how many rows have a missing fips? Answer with one query that uses two different count()s, then list the different county names of those rows <2pts>]
+```
+
+#TODO [Why do you think those counties have no fips code? <1pts>]
+
+```sql
+#TODO [for Florida on 2020-12-31 (one row per county), in one query with no GROUP BY: the total, mean (rounded), smallest, largest, standard deviation (rounded) and median of the counties' deaths <2pts>]
+#TODO [the most common number of deaths in a county on 2020-12-31 <1pts>]
+```
+
+## Random samples
+
+```sql
+#TODO [3 random rows from Florida (run it twice: are they the same?) <1pts>]
+#TODO [the row count and the rounded mean of deaths in a 5% sample of covid that is the same every time (use the seed 2026), and the same two numbers for the whole table <2pts>]
+#TODO [save that same 5% sample as a new table covid_5pct, write it to the file covid_5pct.csv with a header row, then delete the table <2pts>]
+\q
+```
+
+## Grouped aggregate queries
+
+```sql
+#TODO [on 2020-12-31, the total deaths of each state, with the column named total_deaths; show the 5 states with the fewest <1pts>]
+#TODO [for each state, the number of different county names it ever reported, with the column named n_counties; show the 3 states with the fewest <1pts>]
+#TODO [the total cases in the whole country on each day of the first week of April 2020 (April 1 to 7), oldest first <1pts>]
+#TODO [for each state on 2020-12-31, in one query: the number of counties, the mean of cases (rounded) and the median of cases, named n_counties, mean_cases and median_cases; show the 3 states with the highest mean <2pts>]
+#TODO [for each state, the first date it reported a death, with the column named first_death; show the 5 earliest <2pts>]
+```
+
+# Final checklist
+
+Before you push, check that:
+
+* every `#TODO` has a line afterwards that is filled in with your command, the real output, or a written English answer to the question in your own words;
+* nothing of yours is left running on Moriah: `ssh moriah 'pgrep -u $USER -a sleep; pgrep -u $USER -af infinite_loop; tmux ls'` prints no processes and no `lab4` session;
+* no scratch files (`covid.csv`, the `days` folder) are in your repository (`git status` should not mention them), and your private key is nowhere in this file;
+* the file renders: `quarto render lab04.qmd` produces an HTML page with no errors (nothing in this lab is executed during rendering).
