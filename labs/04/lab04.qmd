@@ -1,7 +1,7 @@
 ---
 title: "Lab 4: Remote machines and background jobs"
 subtitle: "Big Data Algorithms"
-author: "YOUR NAME HERE"
+author: "ivetta volowelsky"
 format:
   html:
     toc: true
@@ -39,6 +39,7 @@ Create a directory for this assignment, download this file and move it into `$my
 mkdir -p $my_52002_repo/labs/04/scratch
 cd $my_52002_repo/labs/04/scratch
 #TODO [command to copy covid.csv from last lab's scratch folder or the download command <1pts>]
+cp $my_52002_repo/labs/02/scratch/covid.csv .
 ```
 
 # Part 1: Remote computing with `ssh`
@@ -67,8 +68,11 @@ exit #go back to your laptop
 Now run the same `hostname`, `pwd`, `nproc` and `free -h` on your laptop (a Mac has no `free`: use `sysctl -n hw.memsize`, which is in bytes).
 
 #TODO [How many cores and how much memory does Moriah's login machine have compared to your laptop? <1pts>]
+Moriah’s login machine (moriah-gw-02) has 2 cores and about 11 GiB of RAM (about 7.9 GiB available). My MacBook has [N] cores and [X] GB of RAM, so the laptop is much more powerful than the login machine. That’s by design: the login machine is a small, shared entry point used by many people at once, and the heavy computation on a cluster is meant to run on separate compute nodes, not on the login machine.
 #TODO [Why is the `pwd` different on Moriah vs your laptop? <1pts>]
+They are two different computers with different operating systems and separate filesystems. On Moriah (Linux), my home directory is /sci/home/ivetta.volowel, and it is tied to my cluster account ivetta.volowel. On my Mac, it is /Users/elivolowelsky, tied to my local account. cd ~ goes to the home directory of whichever machine and user I’m currently on, so the path differs.
 #TODO [why can't you just `ssh` straight to `moriah-gw` from home? What is the name for a machine like `bava`? <1pts>]
+moriah-gw is inside the university’s internal network and isn’t directly reachable from the open internet (e.g., from home), so I can’t connect to it directly. I first connect to bava, which is reachable from outside, and it forwards me to moriah-gw (that’s what ssh -J does). A machine like bava is called a jump host (also called a bastion host). It is a single, hardened and monitored entry point (protected here by OTP), which means the internal machines don’t need to be exposed publicly.
 
 # Part 2: Moving files with `rsync`
 
@@ -77,6 +81,8 @@ All of these commands are run **on your laptop**, in `labs/04/scratch`. First ma
 ```bash
 cd $my_52002_repo/labs/04/scratch
 #TODO [login to moriah and make the folder lab04 in your home directory <1pts>]
+cd $my_52002_repo/labs/04/scratch
+ssh -J ivetta.volowel@bava.cs.huji.ac.il ivetta.volowel@moriah-gw.cs.huji.ac.il 'mkdir -p ~/lab04'
 ```
 
 Send the data over and check that it arrived whole. `md5sum` prints a *checksum*, a short code computed from all of the bytes of a file (we will dicussing this more formally when we do hash functions), so two equal codes mean two equal files (on a Mac, use `md5 covid.csv` for the first line):
@@ -84,11 +90,14 @@ Send the data over and check that it arrived whole. `md5sum` prints a *checksum*
 ```bash
 md5sum covid.csv
 time #TODO [the rsync command which copies covid.csv to the lab04 folder on Moriah <1pts>]
+md5 covid.csv
+time rsync -a --stats -e "ssh -J ivetta.volowel@bava.cs.huji.ac.il" covid.csv ivetta.volowel@moriah-gw.cs.huji.ac.il:~/lab04/
 #TODO [login to moriah and run "md5sum ~/lab04/covid.csv" <1pts>]
+ssh -J ivetta.volowel@bava.cs.huji.ac.il ivetta.volowel@moriah-gw.cs.huji.ac.il 'md5sum ~/lab04/covid.csv'
 ```
 
 #TODO [how long did the `rsync` transfer take, and do the two checksums agree? <1pts>]
-
+MD5 (covid.csv) = a632887edbaaac09a20cfa9745c03b03
 Make a folder of many small files, one per day, the same way you did in Lab 2:
 
 ```bash
@@ -98,6 +107,8 @@ ls days | wc -l
 ```
 
 Copy the entire folder with `rsync`, twice:
+time rsync -a --stats -e "ssh -J ivetta.volowel@bava.cs.huji.ac.il" days/ ivetta.volowel@moriah-gw.cs.huji.ac.il:~/lab04/days_rsync/
+time rsync -a --stats -e "ssh -J ivetta.volowel@bava.cs.huji.ac.il" days/ ivetta.volowel@moriah-gw.cs.huji.ac.il:~/lab04/days_rsync/
 
 ```bash
 time rsync -a --stats days/ moriah:~/lab04/days_rsync/
@@ -105,13 +116,22 @@ time rsync -a --stats days/ moriah:~/lab04/days_rsync/
 ```
 
 #TODO [Why was the second `rsync` run so much faster? <2pts>]
-#TODO [the `--stats` output has a line "Total bytes sent". What was it in each of the two rsync runs? <1pts>]
+The second run was much faster because rsync compares the source with the destination
+(by file size and modification time) and only sends files that are missing or changed.
+In the first run all the files were new, so all of them were sent. In the second run
+nothing had changed, so almost no data had to be transferred, only the file list was compared.
 
+#TODO [the `--stats` output has a line "Total bytes sent". What was it in each of the two rsync runs? <1pts>]
+rsync -a --stats days/ moriah:~/lab04/days_rsync/  0.01s user 0.01s system 39% cpu 0.049 total
+ssh: Could not resolve hostname moriah: nodename nor servname provided, or not known
+rsync(48428): error: unexpected end of file
+rsync -a --stats days/ moriah:~/lab04/days_rsync/  0.01s user 0.01s system 76% cpu 0.021 total
 Clean up on both sides:
 
 ```bash
 rm -r days 
 # TODO [login to moriah and cleanup covid.csv and the days/ folder <2pts>]
+ssh -J ivetta.volowel@bava.cs.huji.ac.il ivetta.volowel@moriah-gw.cs.huji.ac.il 'rm -r ~/lab04/covid.csv ~/lab04/days_rsync'
 ```
 
 # Part 3: Looking at processes with `ps` and `pgrep`
@@ -121,6 +141,7 @@ From here to the end of the lab, everything is done on Moriah (unless it says ot
 ```bash
 #TODO [login to moriah <0pts>]
 cd ~/lab04
+
 ```
 
 `sleep 600` does nothing for 10 minutes, which makes it a perfect process to look at. The `&` at the end runs it in the **background**, so you get your prompt back. The shell stores the PID of the last background process in the variable `$!`:
@@ -131,34 +152,50 @@ echo $!
 ```
 
 #TODO [what did the line `[1] <number>` that appeared after the first command show, and how is `echo $!` related to it? <1pts>]
+[1] is the job number assigned by the shell to this background job, and the number after it is the PID (process ID) of the background process. echo $! prints the PID of the most recently started background process, which is the same number.
 
 ```bash
 jobs
 ```
 
 #TODO [Is the output of the above expected? Why/why not? <1pts>]
+Yes, it is expected. jobs lists background jobs started in the current shell. We started exactly one, so it shows that single job as Running.
 
 Now let's find this job in the linux process list. `ps` can show just the columns you ask for, for just the processes you ask for. Read the `-o` and `-p` options in `man ps` and run:
 
 ```bash
 ps -o pid,ppid,user,stat,command -p $!
 #TODO [the parent PID of your `sleep` is the PID of another process. Write the command that shows that process' command, and say what it is <1pts>]
+ps -o pid,ppid,user,stat,command -p <46311>
+
 ```
 
 ```bash
 #TODO [keep following the parents upward, one `ps` at a time, until you find the program which let you into moriah. The user will be "root". <1pts>]
+ps -o pid,ppid,user,stat,command -p 1379316
+Output: sshd-session: ivetta.volowel@pts/227
+ps -o pid,ppid,user,stat,command -p 1379134
+Output: sshd-session: ivetta.volowel [priv] — owned by root. This is the SSH daemon process that let me into Moriah.
 ```
 
 #TODO [How does this explain why your background job is at risk when the connection drops? <1pts>]
+The process tree shows that sleep is a child of zsh, which is a child of sshd. If the SSH connection drops, sshd terminates, which causes zsh to receive a SIGHUP signal and terminate, and zsh sends SIGHUP to all its children (including sleep), killing them too. The entire chain dies from the top down.
 
 ```bash
 #TODO [How many different users (besides root) on Moriah have a `sleep` running right now? <2pts>]
+5
 ```
 
 #TODO [Print out a table of the users running sleep. <2pts>]
+2 orzuk
+      1 shmuelh+
+      1 muhamma+
+      1 ivetta.+
+      1 bethany+
 
 ```bash
 #TODO [kill your sleep job without losing your connection to moriah <1pts>]
+kill %1
 ```
 
 # Part 4: A terminal that survives: `tmux`
@@ -221,82 +258,272 @@ Write each SQL statement on its own line underneath its `#TODO` line, and below 
 ```bash
 cd $my_52002_repo/labs/04/scratch
 #TODO [create a new empty database called lab04 and open psql inside it <1pts>]
+cd $my_52002_repo/labs/04/scratch
+createdb lab04
+psql lab04
+
 ```
 
 ```sql
 #TODO [print which database, user and socket you are connected through <1pts>]
+\conninfo
+
 #TODO [list all the databases on your server <1pts>]
+\l
+
 #TODO [connect to the database called postgres, then back to lab04 <1pts>]
+\c postgres
+
 ```
 
 ## Loading the covid data
 
 ```sql
 #TODO [turn on the timing of each statement, create the table covid with a correctly-typed column for each of the 6 columns of covid.csv, and load covid.csv into it. Show the table's columns and their types, and the list of tables in the database <3pts>]
+\timing on
+CREATE TABLE covid (
+  date   date,
+  county text,
+  state  text,
+  fips   text,
+  cases  integer,
+  deaths integer
+);
+\copy covid FROM 'covid.csv' CSV HEADER
+\d covid
+--  Column |  Type   
+-- --------+---------
+--  date   | date    
+--  county | text    
+--  state  | text    
+--  fips   | text    
+--  cases  | integer 
+--  deaths | integer 
+\dt
+--  Schema | Name  | Type  | Owner 
+-- --------+-------+-------+-------
+--  public | covid | table | ivetta
+
 #TODO [count the rows of covid <1pts>]
+FROM covid;
+-- 884737 (Time: 58.205 ms)
+ ⁠
+
 ```
 
 Now make a common mistake on purpose: run your `\copy` line a second time.
 
 ```sql
 #TODO [count the rows of covid again <1pts>]
+\copy covid FROM 'covid.csv' CSV HEADER
+SELECT count(*) FROM covid;
+-- 1769474 (Time: 92.889 ms)
+
 ```
 
 #TODO [What happened, and why did postgres not stop you? <1pts>]
+The number of rows doubled from 884,737 to 1,769,474 because \copy appends the rows to the existing table instead of replacing them. Postgres did not stop us because we did not define any uniqueness constraint on the table, so duplicate rows are allowed.
 
 ```sql
 #TODO [delete the table (in a way that won't error if it is already gone)<1pts>]
+DROP TABLE IF EXISTS covid;
+
 #TODO [create it again (just copy the code from the previous chunk)]
+CREATE TABLE covid (
+  date   date,
+  county text,
+  state  text,
+  fips   text,
+  cases  integer,
+  deaths integer
+
 #TODO [reload the CSV covid data into it (just copy the code from the previous chunk)]
+\copy covid FROM 'covid.csv' CSV HEADER
+
 #TODO [Count the # of rows to check <1pts>]
+SELECT count(*) FROM covid;
+-- 884737 (Time: 48.114 ms)
+ 
 ```
 
 ## Row-level queries
 
 ```sql
 #TODO [all rows, all columns]
+--     date    |  county   |   state    | fips  | cases | deaths 
+-- ------------+-----------+------------+-------+-------+--------
+--  2020-01-21 | Snohomish | Washington | 53061 |     1 |      0
+--  2020-01-22 | Snohomish | Washington | 53061 |     1 |      0
+--  2020-01-23 | Snohomish | Washington | 53061 |     1 |      0
+--  2020-01-24 | Cook      | Illinois   | 17031 |     1 |      0
+--  2020-01-24 | Snohomish | Washington | 53061 |     1 |      0
+--  ... (884737 rows total)
+
 #TODO [all the columns of the first 5 days of Snohomish County, Washington (the first known US case), oldest first <1pts>]
+SELECT * FROM covid WHERE county = 'Snohomish' AND state = 'Washington' ORDER BY date LIMIT 5;
+--     date    |  county   |   state    | fips  | cases | deaths 
+-- ------------+-----------+------------+-------+-------+--------
+--  2020-01-21 | Snohomish | Washington | 53061 |     1 |      0
+--  2020-01-22 | Snohomish | Washington | 53061 |     1 |      0
+--  2020-01-23 | Snohomish | Washington | 53061 |     1 |      0
+--  2020-01-24 | Snohomish | Washington | 53061 |     1 |      0
+--  2020-01-25 | Snohomish | Washington | 53061 |     1 |      0
+
 #TODO [every county of Rhode Island, each listed once, in alphabetical order <1pts>]
+SELECT DISTINCT county FROM covid WHERE state = 'Rhode Island' ORDER BY county;
+-- Bristol, Kent, Newport, Providence, Unknown, Washington (6 rows)
+
 #TODO [on 2020-11-30, the county, state and deaths of the counties ranked 11 to 15 by deaths, most deaths first <1pts>]
+SELECT county, state, deaths FROM covid WHERE date = '2020-11-30' ORDER BY deaths DESC LIMIT 5 OFFSET 10;
+--     county    |    state    | deaths 
+-- --------------+-------------+--------
+--  Arecibo      | Puerto Rico |       
+--  Aguas Buenas | Puerto Rico |       
+--  Adjuntas     | Puerto Rico |       
+--  Aibonito     | Puerto Rico |       
+--  Canovanas    | Puerto Rico |
+ ⁠
+
 ```
 
 #TODO [Look at the deaths column of your answer above. What went wrong? Write the corrected query below, using a condition from the lecture <2pts>]
+The deaths column is empty (NULL) for all 5 rows because in Postgres ORDER BY ... DESC places NULL values at the very top before actual numbers. Since Puerto Rico counties have NULL for deaths, they came first. We fix this by filtering out missing values with AND NOT deaths IS NULL.
+
 
 ```sql
 #TODO [corrected query <1pts>]
+SELECT county, state, deaths FROM covid WHERE date = '2020-11-30' AND NOT deaths IS NULL ORDER BY deaths DESC LIMIT 5 OFFSET 10;
+--     county    |    state     | deaths 
+-- --------------+--------------+--------
+--  Bergen       | New Jersey   |   2124
+--  Suffolk      | New York     |   2053
+--  Hidalgo      | Texas        |   2050
+--  Philadelphia | Pennsylvania |   2026
+--  Clark        | Nevada       |   1767
+
 #TODO [on 2020-12-31, the state, county and deaths of every county in Maine, New Hampshire and Vermont (write the states as a list, not with OR), sorted by state and, within each state, by deaths, most first <1pts>]
+SELECT state, county, deaths FROM covid WHERE date = '2020-12-31' AND state IN ('Maine', 'New Hampshire', 'Vermont') ORDER BY state, deaths DESC;
+--  state |    county    | deaths 
+-- -------+--------------+--------
+--  Maine | Cumberland   |     97
+--  Maine | York         |     63
+--  Maine | Androscoggin |     44
+--  Maine | Kennebec     |     29
+--  Maine | Somerset     |     21
+
 #TODO [on 2020-12-31, the counties outside New York state with more than 300000 cases or more than 5000 deaths, most cases first (you should get 3) <1pts>]
+SELECT county, state, cases, deaths FROM covid WHERE date = '2020-12-31' AND state <> 'New York' AND (cases > 300000 OR deaths > 5000) ORDER BY cases DESC;
+--    county    |   state    | cases  | deaths 
+-- -------------+------------+--------+--------
+--  Los Angeles | California | 770915 |  10345
+--  Cook        | Illinois   | 393652 |   8285
+--  Maricopa    | Arizona    | 322449 |   5125
+
 #TODO [the cases in Los Angeles County, California from July 1 to July 4 2020, both days included, with one comparison only <1pts>]
+SELECT date, cases FROM covid WHERE county = 'Los Angeles' AND state = 'California' AND date BETWEEN '2020-07-01' AND '2020-07-04' ORDER BY date;
+--     date    | cases  
+-- ------------+--------
+--  2020-07-01 | 105507
+--  2020-07-02 | 107667
+--  2020-07-03 | 110310
+--  2020-07-04 | 113497
+
 #TODO [on 2020-12-31, the county and state of every county whose name ends in "ville" <1pts>]
+SELECT county, state FROM covid WHERE date = '2020-12-31' AND county LIKE '%ville';
+-- Renville (Minnesota), Greensville (Virginia), Bonneville (Idaho), Renville (North Dakota), Bienville (Louisiana), Iberville (Louisiana), Granville (North Carolina), Abbeville (South Carolina), Greenville (South Carolina) (9 rows)
+
 #TODO [on 2020-12-31, the California counties (California's fips codes are "06" followed by 3 characters) with fewer than 200 cases, using the fips column and not the state column <1pts>]
+SELECT county, fips, cases FROM covid WHERE date = '2020-12-31' AND fips LIKE '06___' AND cases < 200;
+--  county | fips  | cases 
+-- --------+-------+-------
+--  Sierra | 06091 |    24
+--  Alpine | 06003 |    65
+
 #TODO [the number of different county names that contain "lake", first with LIKE and then with ILIKE <1pts>]
+SELECT count(DISTINCT county) FROM covid WHERE county LIKE '%lake%';
+-- 0
+SELECT count(DISTINCT county) FROM covid WHERE county ILIKE '%lake%';
+-- 7
+
 ```
 
 #TODO [Why do the two counts differ? <1pts>]
+Because LIKE is case-sensitive while ILIKE ignores upper and lower case. In the dataset, "Lake" always starts with a capital "L" (for example, "Lake" or "Salt Lake"), so LIKE '%lake%' with a lowercase "l" finds 0 matches, whereas ILIKE '%lake%' finds all 7.
+
 
 ```sql
 #TODO [every different county name that starts with "Mc" or "Mac" followed by a capital letter, in alphabetical order, using a regular expression. How many are there? <2pts>]
+
+Because LIKE is case-sensitive while ILIKE ignores upper and lower case. In the dataset, "Lake" always starts with a capital "L" (for example, "Lake" or "Salt Lake"), so LIKE '%lake%' with a lowercase "l" finds 0 matches, whereas ILIKE '%lake%' finds all 7.
+
+
 ```
 
 ## Aggregate queries
 
 ```sql
 #TODO [how many rows have a missing fips? Answer with one query that uses two different count()s, then list the different county names of those rows <2pts>]
+SELECT count(*), count(fips), count(*) - count(fips) AS missing_fips FROM covid;
+--  count  | count  | missing_fips 
+-- --------+--------+--------------
+--  884737 | 876471 |         8266
+SELECT DISTINCT county FROM covid WHERE fips IS NULL ORDER BY county;
+-- Joplin, Kansas City, New York City, Unknown (4 rows)
+ ⁠
+
 ```
 
 #TODO [Why do you think those counties have no fips code? <1pts>]
+"Unknown" is for cases where the patient's county was not known, and "Joplin", "Kansas City", and "New York City" are cities that span across multiple counties (for example, New York City combines 5 counties/boroughs into one row in the NYT dataset), so they do not have a single county FIPS code.
+
 
 ```sql
 #TODO [for Florida on 2020-12-31 (one row per county), in one query with no GROUP BY: the total, mean (rounded), smallest, largest, standard deviation (rounded) and median of the counties' deaths <2pts>]
+SELECT sum(deaths), round(avg(deaths)), min(deaths), max(deaths), round(stddev(deaths)), percentile_cont(0.5) WITHIN GROUP (ORDER BY deaths) FROM covid WHERE state = 'Florida' AND date = '2020-12-31';
+--   sum  | round | min | max  | round | percentile_cont 
+-- -------+-------+-----+------+-------+-----------------
+--  21672 |   319 |   0 | 4188 |   606 |             119
+
 #TODO [the most common number of deaths in a county on 2020-12-31 <1pts>]
+SELECT mode() WITHIN GROUP (ORDER BY deaths) FROM covid WHERE date = '2020-12-31';
+-- 0
+
 ```
 
 ## Random samples
 
 ```sql
 #TODO [3 random rows from Florida (run it twice: are they the same?) <1pts>]
+SELECT * FROM covid WHERE state = 'Florida' ORDER BY random() LIMIT 3;
+-- Run 1:
+--  2020-03-12 | Seminole | Florida | 12117 |     1 |      0
+--  2020-03-25 | Monroe   | Florida | 12087 |    11 |      0
+--  2020-07-30 | Collier  | Florida | 12021 |  9355 |    121
+SELECT * FROM covid WHERE state = 'Florida' ORDER BY random() LIMIT 3;
+-- Run 2:
+--  2020-05-16 | Polk     | Florida | 12105 |   722 |     41
+--  2020-08-07 | Jackson  | Florida | 12063 |  1832 |     37
+--  2020-04-10 | Pinellas | Florida | 12103 |   431 |     12
+-- No, they are not the same, because random() picks a new random sample each time.
+
 #TODO [the row count and the rounded mean of deaths in a 5% sample of covid that is the same every time (use the seed 2026), and the same two numbers for the whole table <2pts>]
+SELECT count(*), round(avg(deaths)) FROM covid TABLESAMPLE BERNOULLI (5) REPEATABLE (2026);
+--  count | round 
+-- -------+-------
+--  44143 |    50
+SELECT count(*), round(avg(deaths)) FROM covid;
+--   count  | round 
+-- ---------+-------
+--   884737 |    54
+
 #TODO [save that same 5% sample as a new table covid_5pct, write it to the file covid_5pct.csv with a header row, then delete the table <2pts>]
+CREATE TABLE covid_5pct AS SELECT * FROM covid TABLESAMPLE BERNOULLI (5) REPEATABLE (2026);
+-- SELECT 44143
+\copy covid_5pct TO 'covid_5pct.csv' WITH (FORMAT csv, HEADER true)
+-- COPY 44143
+DROP TABLE covid_5pct;
+-- DROP TABLE
+
 \q
 ```
 
@@ -304,10 +531,47 @@ Now make a common mistake on purpose: run your `\copy` line a second time.
 
 ```sql
 #TODO [on 2020-12-31, the total deaths of each state, with the column named total_deaths; show the 5 states with the fewest <1pts>]
+SELECT state, sum(deaths) AS total_deaths FROM covid WHERE date = '2020-12-31' GROUP BY state ORDER BY total_deaths LIMIT 5;
+--           state           | total_deaths 
+-- --------------------------+--------------
+--  Northern Mariana Islands |            2
+--  Virgin Islands           |           23
+--  Guam                     |          123
+--  Vermont                  |          136
+--  Alaska                   |          198
+
 #TODO [for each state, the number of different county names it ever reported, with the column named n_counties; show the 3 states with the fewest <1pts>]
+
 #TODO [the total cases in the whole country on each day of the first week of April 2020 (April 1 to 7), oldest first <1pts>]
+SELECT date, sum(cases) FROM covid WHERE date BETWEEN '2020-04-01' AND '2020-04-07' GROUP BY date ORDER BY date;
+--     date    |  sum   
+-- ------------+--------
+--  2020-04-01 | 215391
+--  2020-04-02 | 245108
+--  2020-04-03 | 277426
+--  2020-04-04 | 312525
+--  2020-04-05 | 338141
+--  2020-04-06 | 369057
+--  2020-04-07 | 399394
+
 #TODO [for each state on 2020-12-31, in one query: the number of counties, the mean of cases (rounded) and the median of cases, named n_counties, mean_cases and median_cases; show the 3 states with the highest mean <2pts>]
+SELECT state, count(*) AS n_counties, round(avg(cases)) AS mean_cases, percentile_cont(0.5) WITHIN GROUP (ORDER BY cases) AS median_cases FROM covid WHERE date = '2020-12-31' GROUP BY state ORDER BY mean_cases DESC LIMIT 3;
+--         state         | n_counties | mean_cases | median_cases 
+-- ----------------------+------------+------------+--------------
+--  California           |         58 |      39791 |       8493.5
+--  Arizona              |         15 |      34922 |        11126
+--  District of Columbia |          1 |      28983 |        28983
+
 #TODO [for each state, the first date it reported a death, with the column named first_death; show the 5 earliest <2pts>]
+SELECT state, min(date) AS first_death FROM covid WHERE deaths > 0 GROUP BY state ORDER BY first_death LIMIT 5;
+--     state     | first_death 
+-- --------------+-------------
+--  Washington   | 2020-02-29
+--  California   | 2020-03-04
+--  Florida      | 2020-03-06
+--  New Jersey   | 2020-03-10
+--  South Dakota | 2020-03-10
+ ⁠
 ```
 
 # Final checklist
